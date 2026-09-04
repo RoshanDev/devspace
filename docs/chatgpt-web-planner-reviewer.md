@@ -3,50 +3,70 @@
 This feature prepares a read-only `codex-with-chatgpt` (C2C) bridge so ChatGPT
 Web can inspect a local workspace for planning and independent review.
 
-## Current support boundary
+## Supported control planes
 
-The current implementation is **not a terminal-only ChatGPT Web client**.
+The C2C bridge is only the data plane. A visible browser controller is also
+required to open ChatGPT, configure or repair the workspace connector, select
+the web model and mode, send C2C messages, and read replies.
 
-The browser control required to open ChatGPT, configure the connector, select a
-web model, send C2C messages, and read replies is available in the ChatGPT
-desktop app's Codex/Work experience. A standalone `codex` process in Windows
-Terminal, WSL, or an IDE terminal does not expose that in-app-browser runtime to
-this integration.
-
-Supported today:
+Two controller paths are supported in this branch:
 
 ```text
-ChatGPT desktop app (Codex session)
+1. ChatGPT desktop app (Codex session)
         |-- in-app browser --> ChatGPT Web / GPT-5.6 Sol + Pro
         |
         `-- WSL shell ------> devspace chatgpt-web --> C2C bridge
                                                      |
                                                      `--> read-only workspace MCP
+
+2. Native Cursor IDE or Cursor CLI
+        |-- Playwright MCP --> visible persistent browser --> ChatGPT Web
+        |
+        `-- terminal -------> devspace chatgpt-web --> C2C bridge
+                                                     |
+                                                     `--> read-only workspace MCP
 ```
 
-Not supported today:
+The Cursor controller is installed in this repository as:
 
-- standalone Codex CLI as the browser/control-plane owner;
-- direct Cursor-agent control of ChatGPT Web;
+```text
+.cursor/mcp.json
+.cursor/rules/devspace-chatgpt-web.mdc
+.cursor/commands/chatgpt-web.md
+```
+
+The MCP config uses Microsoft's Playwright MCP server with a dedicated
+persistent browser profile. Cursor must be reloaded after those files first
+appear so the server and project rule are discovered.
+
+Not supported by this branch:
+
+- a standalone Codex CLI process with no browser MCP or desktop in-app browser;
+- `devspace agents run cursor` inheriting the project Playwright MCP server;
 - direct Grok-agent control of ChatGPT Web;
 - a `devspace-agentd` provider named `chatgpt-web`.
 
-Cursor and Grok remain valid DevSpace local subagent providers, but invoking
-those providers uses their own ACP runtimes. It does not consume ChatGPT Web
-quota or select GPT-5.6 Sol Pro.
+The distinction between **native Cursor** and the **DevSpace Cursor ACP
+subagent** matters. Native Cursor loads project `.cursor/mcp.json` and project
+rules. DevSpace currently creates its Cursor ACP session with an explicit empty
+`mcpServers` list, so that subagent path does not inherit the project browser
+controller. This is a deliberate safety boundary until MCP injection is made
+explicit and user-approved.
 
-## Why this is not a daemon provider
+## Why this is not a background daemon provider
 
 DevSpace local providers run under `devspace-agentd`. That daemon can invoke
-provider SDKs and local agent protocols, but it does not own a logged-in browser
-surface. Giving it ChatGPT cookies, scraping session tokens, or calling private
-ChatGPT endpoints would cross the intended security boundary.
+provider SDKs and local agent protocols, but it does not own an interactive,
+logged-in browser surface. Giving it ChatGPT cookies, scraping session tokens,
+or calling private ChatGPT endpoints would cross the intended security
+boundary.
 
-A future terminal-native implementation needs a separate, user-visible browser
-controller with an explicit local IPC contract. Until that exists, do not claim
-that `devspace chatgpt-web` alone can conduct a complete Web conversation.
+Cursor support therefore uses a user-visible Playwright MCP browser controlled
+by the native Cursor session. The browser keeps its own persistent profile; the
+user completes login, CAPTCHA, 2FA, passkeys, and consent directly in that
+window.
 
-## What the current commands do
+## What the DevSpace commands do
 
 Run them from the project ChatGPT should inspect:
 
@@ -60,6 +80,8 @@ devspace chatgpt-web pair --json
 
 They discover C2C, validate or start its local bridge, establish a tunnel, and
 produce connector/pairing information. They do **not** operate the ChatGPT page.
+The desktop in-app browser or Cursor's Playwright MCP controller performs that
+part.
 
 `devspace init` is not required for these commands. The C2C bridge has its own
 state and authorization. DevSpace server OAuth is unrelated.
@@ -68,20 +90,22 @@ Important fields:
 
 - `localReady: true`: the local C2C bridge and MCP endpoint are healthy.
 - `result.tokenCount: 0`: ChatGPT has not completed connector OAuth yet.
+- `result.tokenCount > 0`: at least one connector has a C2C token; this is not
+  model verification.
 - `result.pairingActive: true`: a one-time pairing code is waiting or remains
   valid.
-- `modelVerification.verified: false`: no browser has verified the selected web
-  model and mode.
+- `modelVerification.verified: false`: expected from the CLI because only a
+  visible browser can verify the selected web model and mode.
 - `requiredModelSelectorLabel`: the model-family control must show
   `GPT-5.6 Sol`.
 - `requiredModeLabel`: the capability/reasoning control must show `Pro`.
-- `effectiveModelLabel` or the legacy `requiredModelLabel`: the resulting model
-  is `GPT-5.6 Sol Pro`; this does not require the page to render one combined DOM
-  label.
+- `effectiveModelLabel` or the legacy `requiredModelLabel`: the effective model
+  is `GPT-5.6 Sol Pro`; the page may render this as two controls rather than one
+  combined label.
 
 The model gate accepts either two separately visible controls (`GPT-5.6 Sol` and
 `Pro`) or one normalized combined summary label (`GPT-5.6 Sol Pro`). It does not
-accept Sol with High or Extra High as a substitute for Pro.
+accept Sol with Medium, High, Extra High, or Auto as a substitute for Pro.
 
 ## C2C discovery
 
@@ -98,7 +122,7 @@ DevSpace uses the first working source in this order:
 A command override is one executable path. For a source checkout, especially a
 path containing spaces, use `DEVSPACE_C2C_CHECKOUT`.
 
-## Complete the one-time ChatGPT connection
+## ChatGPT desktop Codex setup
 
 Install both skills into the Codex environment used by the ChatGPT desktop app:
 
@@ -115,47 +139,100 @@ cp "skills/chatgpt-web/SKILL.md" \
 Update the installed C2C skill's checkout placeholder to the actual checkout
 path, then restart the Codex desktop session so skills are rediscovered.
 
-In the ChatGPT desktop app, open the target WSL project in Codex mode and ask it
-to complete the C2C connector setup. The app's in-app browser performs the
-ChatGPT login, connector creation, OAuth approval, pairing, and model/mode check.
-User interaction may still be required for login, CAPTCHA, 2FA, and consent.
+The desktop app's in-app browser performs ChatGPT login, connector creation or
+repair, OAuth approval, pairing, and the model/mode check. User interaction may
+still be required for login, CAPTCHA, 2FA, and consent.
 
-Generate a fresh pairing code immediately before authorization if the previous
-one expired:
+## Native Cursor setup
 
-```bash
-devspace chatgpt-web pair --json
-```
-
-After authorization:
+The feature branch already contains the project MCP server, rule, and slash
+command. Pull it and reload the Cursor window:
 
 ```bash
-devspace chatgpt-web status --json
+git pull --ff-only
 ```
 
-A nonzero `tokenCount` proves that a connector obtained a C2C token. It does not
-by itself prove that GPT-5.6 Sol Pro is selected. Verify both the
-`GPT-5.6 Sol` model-family control and the `Pro` mode in the current browser
-conversation.
+After reload, Cursor should show the MCP server:
+
+```text
+devspace-chatgpt-web-browser
+```
+
+Approve and enable that server. It starts a visible Playwright browser and keeps
+a project-specific persistent profile. The first use may install the browser
+runtime and will require a one-time ChatGPT login in the opened window.
+
+Invoke the workflow from Cursor Chat or Cursor CLI with:
+
+```text
+/chatgpt-web
+```
+
+or explicitly mention the project rule:
+
+```text
+Use the devspace-chatgpt-web rule. Repair the current C2C connector if needed,
+ask GPT-5.6 Sol with Pro for a plan, execute it locally, and return the real diff
+for independent review until DONE.
+```
+
+Cursor CLI supports the same project MCP configuration and rules as the IDE, so
+this path is available there as well after the MCP server is enabled.
+
+The Cursor rule deliberately forbids browser JavaScript evaluation, private
+network inspection, cookie/storage extraction, and undocumented ChatGPT APIs.
+It uses accessibility snapshots, normal clicks, typing, key presses, tabs, and
+bounded waits.
+
+## Repairing a reclaimed Quick Tunnel
+
+A Cloudflare Quick Tunnel hostname can change when the bridge restarts. A doctor
+result such as this means the old ChatGPT connector address is stale:
+
+```json
+{
+  "localReady": false,
+  "doctor": {
+    "chatgptRepair": {
+      "needed": true,
+      "reason": "address_reclaimed"
+    }
+  }
+}
+```
+
+The browser-owning controller must:
+
+1. Run `devspace chatgpt-web doctor --fix --json` once.
+2. Require a non-null current `mcpUrl` before editing the connector.
+3. Delete only the connector named by `chatgptRepair.connectorName`.
+4. Recreate exactly that connector with the current URL, never the old URL.
+5. Generate a fresh pairing code immediately before OAuth when needed.
+6. Complete OAuth and pairing in the browser.
+7. Re-run status and require `tokenCount > 0`.
+8. Call `workspace_info` and require the expected workspace identity.
+
+Do not rerun setup or create a second connector when a bounded repair is enough.
 
 ## Planning and review workflow
 
-Once both gates are green:
+Once bridge, connector, workspace, and model gates are green:
 
 1. ChatGPT Web reads the connected workspace through C2C's read-only MCP tools
    and returns a bounded implementation plan.
-2. Codex executes locally, runs tests, and records the real result.
-3. ChatGPT Web independently reads the current diff and test evidence.
-4. Codex applies required fixes and repeats until ChatGPT returns `DONE` or a
-   real blocker.
+2. The local controller's executor—Codex or Cursor—modifies files, runs tests,
+   and records the real result.
+3. ChatGPT Web independently reads the current diff and released test evidence.
+4. The executor applies required fixes and repeats until ChatGPT returns `DONE`
+   or a real blocker.
 
 Control messages contain only task state and compact metadata. Files, diffs,
-logs, credentials, and keys must not be pasted into the conversation.
+logs, credentials, and keys must not be pasted into the browser conversation.
 
-## Cursor and Grok
+## Cursor ACP subagent and Grok
 
 Enabling `cursor` or `grok` in `devspace init` enables their native DevSpace
-subagent adapters. Example:
+subagent adapters:
 
 ```bash
 devspace agents targets --json
@@ -163,9 +240,9 @@ devspace agents run cursor "Implement the bounded task" --json
 devspace agents run grok "Review the current change" --json
 ```
 
-Those commands are useful alongside the desktop-controlled ChatGPT Web planning
-loop, but they are separate model invocations. They are not a route to ChatGPT
-Web or GPT-5.6 Sol Pro.
+Those commands are separate model invocations. In this branch they do not
+inherit the native Cursor Playwright MCP controller and are not a route to
+ChatGPT Web or GPT-5.6 Sol Pro.
 
 ## Local Pi sandbox test behavior
 
@@ -174,9 +251,9 @@ WSL, the host kernel, user-namespace policy, AppArmor, nesting, and bubblewrap
 must also permit a functional sandbox. A dependency check can therefore pass
 while the first sandboxed command still fails.
 
-Ordinary local `pnpm test` now performs a functional smoke test. When the Pi
-sandbox is not usable on that host, the optional integration test reports a skip
-instead of failing the unrelated suite. The CI lane keeps it mandatory with:
+Ordinary local `pnpm test` performs a functional smoke test. When the Pi sandbox
+is not usable on that host, the optional integration test reports a skip instead
+of failing the unrelated suite. The CI lane keeps it mandatory with:
 
 ```bash
 DEVSPACE_REQUIRE_PI_SANDBOX=1 pnpm test
@@ -186,20 +263,23 @@ This does not make Pi fall back to unsandboxed execution. It changes only the
 local test's environment policy; Pi's restricted runtime still fails closed if
 a requested sandbox cannot be initialized.
 
-## Windows notes
+## Windows and WSL notes
 
 Keep the repository, DevSpace, C2C bridge, and provider CLIs in the same WSL
-distribution. The ChatGPT desktop app can select that WSL distribution for local
-Codex work. The built-in browser itself runs in the Windows desktop app and uses
-its own browser state.
+distribution. For Cursor Remote WSL, the project MCP server is launched in that
+WSL environment. A visible Linux browser requires WSLg; if Cursor cannot display
+it, run the Playwright MCP server on the Windows side over its HTTP transport
+and point Cursor's MCP configuration at that local endpoint instead.
 
-A Cloudflare Quick Tunnel is suitable for initial validation but its hostname
-may change after restart. C2C's named-tunnel flow is preferable for a stable
-connector once the end-to-end path has been validated.
+A Quick Tunnel is suitable for initial validation but its hostname may change
+after restart. C2C's named-tunnel flow is preferable for a stable connector once
+the end-to-end path has been validated.
 
 ## Security boundary
 
-The bridge never needs ChatGPT cookies or session storage. A model can read only
-what the separately configured C2C workspace exposes. Keep sensitive-file deny
-rules enabled, use one connector per workspace, and never paste secrets into C2C
-control messages.
+The controller never needs to expose ChatGPT cookies or session storage to the
+model. A dedicated persistent browser profile is allowed to retain its own login
+state, but the workflow must not read or serialize those credentials. ChatGPT
+can read only what the separately configured C2C workspace exposes. Keep
+sensitive-file deny rules enabled, use one connector per workspace, and never
+paste secrets into C2C control messages.
