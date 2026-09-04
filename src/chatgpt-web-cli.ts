@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import { resolve } from "node:path";
-import { loadConfig } from "./config.js";
 import { resolveCliWorkspaceContext } from "./cli-workspace.js";
 import {
   CHATGPT_WEB_REQUIRED_MODEL_LABEL,
@@ -29,10 +28,9 @@ function main(argv: string[]): void {
   }
 
   const options = parseOptions(rest, command);
-  const config = loadConfig();
   const workspaceRoot = options.workspace
     ? resolve(expandHome(options.workspace))
-    : resolveCliWorkspaceContext(config.allowedRoots).workspaceRoot;
+    : resolveDefaultWorkspaceRoot();
 
   if (command === "doctor") {
     const report = runChatGptWebDoctor({
@@ -49,6 +47,16 @@ function main(argv: string[]): void {
     timeoutMs: command === "setup" ? 180_000 : 120_000,
   });
   presentWorkspaceCommand(command, workspaceRoot, result, options.json);
+}
+
+function resolveDefaultWorkspaceRoot(): string {
+  // chatgpt-web is a C2C bridge wrapper and does not need DevSpace server/OAuth
+  // configuration. Ignore MCP-injected workspace variables here so a standalone
+  // terminal invocation resolves only from the current Git checkout or cwd.
+  const env = { ...process.env };
+  delete env.DEVSPACE_WORKSPACE_ID;
+  delete env.DEVSPACE_WORKSPACE_ROOT;
+  return resolveCliWorkspaceContext([], env).workspaceRoot;
 }
 
 function normalizeCommand(value: string | undefined): ChatGptWebCommand {
@@ -213,9 +221,10 @@ function printHelp(): void {
     "  DEVSPACE_C2C_CHECKOUT (or C2C_CHECKOUT) points to a codex-with-chatgpt checkout.",
     "  Otherwise DevSpace tries c2c on PATH and ~/codex-with-chatgpt.",
     "",
-    "This command prepares the local bridge. The outer Codex session must use its",
-    "in-app browser to select and confirm the exact ChatGPT Web model label.",
-    "It never treats a Codex/API model identifier as proof of Sol Pro and never downgrades.",
+    "DevSpace server/OAuth initialization is not required for these commands.",
+    "They prepare the local bridge; the outer Codex session must use its in-app",
+    "browser to select and confirm the exact ChatGPT Web model label.",
+    "The integration never treats a Codex/API model identifier as proof of Sol Pro and never downgrades.",
   ].join("\n"));
 }
 
