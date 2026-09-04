@@ -17,7 +17,7 @@ Supported today:
 
 ```text
 ChatGPT desktop app (Codex session)
-        |-- in-app browser --> ChatGPT Web / GPT-5.6 Sol Pro
+        |-- in-app browser --> ChatGPT Web / GPT-5.6 Sol + Pro
         |
         `-- WSL shell ------> devspace chatgpt-web --> C2C bridge
                                                      |
@@ -71,9 +71,17 @@ Important fields:
 - `result.pairingActive: true`: a one-time pairing code is waiting or remains
   valid.
 - `modelVerification.verified: false`: no browser has verified the selected web
-  model.
-- `requiredModelLabel`: the visible selector must be exactly
-  `GPT-5.6 Sol Pro`; no automatic downgrade is permitted.
+  model and mode.
+- `requiredModelSelectorLabel`: the model-family control must show
+  `GPT-5.6 Sol`.
+- `requiredModeLabel`: the capability/reasoning control must show `Pro`.
+- `effectiveModelLabel` or the legacy `requiredModelLabel`: the resulting model
+  is `GPT-5.6 Sol Pro`; this does not require the page to render one combined DOM
+  label.
+
+The model gate accepts either two separately visible controls (`GPT-5.6 Sol` and
+`Pro`) or one normalized combined summary label (`GPT-5.6 Sol Pro`). It does not
+accept Sol with High or Extra High as a substitute for Pro.
 
 ## C2C discovery
 
@@ -109,9 +117,8 @@ path, then restart the Codex desktop session so skills are rediscovered.
 
 In the ChatGPT desktop app, open the target WSL project in Codex mode and ask it
 to complete the C2C connector setup. The app's in-app browser performs the
-ChatGPT login, connector creation, OAuth approval, pairing, and exact model-label
-check. User interaction may still be required for login, CAPTCHA, 2FA, and
-consent.
+ChatGPT login, connector creation, OAuth approval, pairing, and model/mode check.
+User interaction may still be required for login, CAPTCHA, 2FA, and consent.
 
 Generate a fresh pairing code immediately before authorization if the previous
 one expired:
@@ -127,8 +134,9 @@ devspace chatgpt-web status --json
 ```
 
 A nonzero `tokenCount` proves that a connector obtained a C2C token. It does not
-by itself prove that GPT-5.6 Sol Pro is selected; verify the exact visible model
-label in the current browser conversation.
+by itself prove that GPT-5.6 Sol Pro is selected. Verify both the
+`GPT-5.6 Sol` model-family control and the `Pro` mode in the current browser
+conversation.
 
 ## Planning and review workflow
 
@@ -158,6 +166,25 @@ devspace agents run grok "Review the current change" --json
 Those commands are useful alongside the desktop-controlled ChatGPT Web planning
 loop, but they are separate model invocations. They are not a route to ChatGPT
 Web or GPT-5.6 Sol Pro.
+
+## Local Pi sandbox test behavior
+
+The Pi sandbox integration depends on more than installed packages. On Linux and
+WSL, the host kernel, user-namespace policy, AppArmor, nesting, and bubblewrap
+must also permit a functional sandbox. A dependency check can therefore pass
+while the first sandboxed command still fails.
+
+Ordinary local `pnpm test` now performs a functional smoke test. When the Pi
+sandbox is not usable on that host, the optional integration test reports a skip
+instead of failing the unrelated suite. The CI lane keeps it mandatory with:
+
+```bash
+DEVSPACE_REQUIRE_PI_SANDBOX=1 pnpm test
+```
+
+This does not make Pi fall back to unsandboxed execution. It changes only the
+local test's environment policy; Pi's restricted runtime still fails closed if
+a requested sandbox cannot be initialized.
 
 ## Windows notes
 
