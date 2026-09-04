@@ -19,6 +19,13 @@ interface ParsedOptions {
   workspace?: string;
 }
 
+const CONTROLLER_SUPPORT = {
+  chatgptDesktopCodex: true,
+  standaloneCodexCli: false,
+  cursor: false,
+  grok: false,
+} as const;
+
 function main(argv: string[]): void {
   const [rawCommand, ...rest] = argv;
   const command = normalizeCommand(rawCommand);
@@ -114,7 +121,10 @@ function parseOptions(args: string[], command: ChatGptWebCommand): ParsedOptions
 
 function presentDoctor(report: ChatGptWebDoctorReport, json: boolean): void {
   if (json) {
-    printJson(report);
+    printJson({
+      ...report,
+      controllerSupport: CONTROLLER_SUPPORT,
+    });
     return;
   }
 
@@ -127,7 +137,9 @@ function presentDoctor(report: ChatGptWebDoctorReport, json: boolean): void {
     report.localReady ? "ready" : "not ready"
   }`);
   console.log(`· Required ChatGPT Web model: ${report.requiredModelLabel}`);
-  console.log("· Model verification: exact visible label must be confirmed in the Codex in-app browser");
+  console.log("· Browser controller: ChatGPT desktop-app Codex session");
+  console.log("· Standalone Codex CLI / Cursor / Grok browser control: not supported");
+  console.log("· Model verification: exact visible label must be confirmed in the desktop in-app browser");
   console.log("· Automatic downgrade: disabled");
 
   if (report.error) {
@@ -155,9 +167,10 @@ function presentWorkspaceCommand(
       command,
       workspaceRoot,
       requiredModelLabel: CHATGPT_WEB_REQUIRED_MODEL_LABEL,
+      controllerSupport: CONTROLLER_SUPPORT,
       modelVerification: {
         verified: false,
-        mechanism: "codex-in-app-browser",
+        mechanism: "chatgpt-desktop-in-app-browser",
         downgradeAllowed: false,
       },
       c2c: resolutionOutput(result.resolution),
@@ -207,7 +220,8 @@ function printHelp(): void {
   console.log([
     "DevSpace ChatGPT Web planner/reviewer",
     "",
-    "Use ChatGPT Web from an outer Codex CLI session for planning and review.",
+    "Prepare a C2C bridge for a ChatGPT desktop-app Codex session to use",
+    "ChatGPT Web for planning and review.",
     `The required model label is exactly: ${CHATGPT_WEB_REQUIRED_MODEL_LABEL}`,
     "",
     "Usage:",
@@ -222,8 +236,9 @@ function printHelp(): void {
     "  Otherwise DevSpace tries c2c on PATH and ~/codex-with-chatgpt.",
     "",
     "DevSpace server/OAuth initialization is not required for these commands.",
-    "They prepare the local bridge; the outer Codex session must use its in-app",
-    "browser to select and confirm the exact ChatGPT Web model label.",
+    "These commands prepare the local bridge only. Browser control requires the",
+    "ChatGPT desktop app's Codex session and its in-app browser.",
+    "Standalone Codex CLI, Cursor, and Grok do not directly own this control plane.",
     "The integration never treats a Codex/API model identifier as proof of Sol Pro and never downgrades.",
   ].join("\n"));
 }
