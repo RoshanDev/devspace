@@ -1,2 +1,8 @@
 #!/usr/bin/env node
-import "../dist/cli.js";
+
+if (process.argv[2] === "chatgpt-web") {
+  process.argv.splice(2, 1);
+  await import("../dist/chatgpt-web-cli.js");
+} else {
+  await import("../dist/cli.js");
+}
