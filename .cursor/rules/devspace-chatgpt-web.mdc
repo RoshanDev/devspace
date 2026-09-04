@@ -1,0 +1,216 @@
+---
+description: Use ChatGPT Web as a planning and independent-review layer through the DevSpace C2C bridge. Apply when the user asks to use ChatGPT Web, C2C, GPT-5.6 Sol Pro, or the DevSpace ChatGPT Web workflow.
+globs:
+alwaysApply: false
+---
+
+# DevSpace ChatGPT Web from Cursor
+
+Cursor owns local execution. ChatGPT Web plans and independently reviews through
+the read-only C2C workspace connector.
+
+This rule is for a native Cursor IDE or Cursor CLI session with the project MCP
+server `devspace-chatgpt-web-browser` enabled. It does not make
+`devspace agents run cursor` inherit browser tools.
+
+## Browser boundary
+
+Use only the Microsoft Playwright MCP tools exposed by
+`devspace-chatgpt-web-browser` for ChatGPT page interaction.
+
+- Use a visible, persistent browser profile. Let the user complete login, CAPTCHA,
+  2FA, passkeys, and consent in the browser.
+- Reuse one ChatGPT tab for one workspace task. Do not create parallel chats or
+  repeatedly resend a message while ChatGPT is generating.
+- Use accessibility snapshots, normal clicks, typing, key presses, tab management,
+  and bounded waits.
+- Do not inspect cookies, local/session storage, authorization headers, or private
+  network requests. Do not call undocumented ChatGPT endpoints. Do not use
+  `browser_evaluate`, `browser_run_code_unsafe`, or network-inspection tools for
+  authentication or model access.
+- Never copy passwords, pairing codes, cookies, tokens, file bodies, diffs, or
+  logs into the Cursor conversation. Pairing codes may be typed only into the
+  official C2C authorization page in the controlled browser.
+
+If the Playwright MCP tools are unavailable, stop with
+`CURSOR_BROWSER_UNAVAILABLE` and tell the user to enable the project MCP server
+and reload Cursor. Do not fall back to an external personal Chrome profile.
+
+## Local and connector preflight
+
+Run from the current Git workspace:
+
+```bash
+devspace chatgpt-web status --json
+devspace chatgpt-web doctor --json
+```
+
+Interpret the results separately:
+
+- Bridge, MCP, OAuth, and tunnel checks describe only local C2C readiness.
+- `tokenCount > 0` proves that at least one ChatGPT connector has completed C2C
+  OAuth. It does not prove the browser is using the required model.
+- `modelVerification.verified: false` from the CLI is expected. Only the visible
+  browser controls can verify the web model and mode.
+
+Do not run `setup` when an existing bridge and workspace are already known.
+Do not restart a healthy bridge.
+
+When `chatgptRepair.needed` is true because a temporary address was reclaimed:
+
+1. Run `devspace chatgpt-web doctor --fix --json` once.
+2. Re-read the returned repair object and current `mcpUrl`.
+3. If the tunnel is still unavailable or `mcpUrl` is null, stop and report the
+   local repair failure; do not edit ChatGPT connectors with no replacement URL.
+4. In the controlled browser, delete only the connector named by
+   `chatgptRepair.connectorName`.
+5. Recreate exactly one connector with the current `mcpUrl`; never use the old
+   address and never modify another workspace's connector.
+6. Generate a fresh code immediately before authorization with
+   `devspace chatgpt-web pair --json` when needed.
+7. Complete OAuth and one-time pairing in the browser.
+8. Run `devspace chatgpt-web status --json` again and require `tokenCount > 0`.
+
+Use the direct ChatGPT settings URLs returned by C2C instead of searching menus
+when connector repair is required.
+
+## Workspace identity gate
+
+Before planning, make ChatGPT call the connected C2C tool `workspace_info`.
+Require the returned workspace name/root to match the current Git workspace.
+If it does not match, stop with `WORKSPACE_MISMATCH`; do not plan, review, or use
+that chat's memory.
+
+Use one connector per workspace. Reuse the existing ChatGPT Project or saved
+conversation when C2C state identifies one. Do not create a second connector or
+reuse another workspace's conversation merely because it is already open.
+
+## Model gate
+
+The current ChatGPT UI may split the effective selection across two controls.
+Require both after every new or reclaimed conversation:
+
+```text
+Model family: GPT-5.6 Sol
+Mode/capability: Pro
+Effective model: GPT-5.6 Sol Pro
+```
+
+Re-read both visible controls after selection. A single combined visible label
+`GPT-5.6 Sol Pro` is equivalent when the UI renders one.
+
+Do not accept Sol with Medium, High, Extra High, or Auto. Do not accept Terra,
+Luna, or another family. A prompt asking for Sol Pro is not verification. If the
+required visible controls cannot be confirmed, stop with `MODEL_UNAVAILABLE`.
+
+## New ChatGPT conversation bootstrap
+
+On a new ChatGPT conversation, send this once after connector, workspace, and
+model gates pass:
+
+```text
+You are the planning and review layer of a Cursor coding session.
+
+Cursor owns execution: editing, terminal commands, tests, Git, and recovery.
+You own high-level reasoning, planning, and independent review.
+
+Use only the C2C connector for this workspace. Read files, Git status, diffs,
+and released test evidence through its tools. Never ask Cursor to paste code,
+diffs, logs, credentials, or tokens.
+
+Return compact structured C2C control messages. After EXECUTED, independently
+inspect the real workspace and current diff. Reply PLAN for required fixes,
+DONE when the success criteria are met, or BLOCKED with a concrete reason.
+```
+
+Confirm the reply is from a Chat conversation, not an incompatible Work-only
+surface, before binding it to the task.
+
+## Planning turn
+
+Send a compact message containing state, not repository content:
+
+```text
+[C2C]
+STATE: INIT
+TASK_ID: <stable id>
+ITERATION: 0
+MODEL_SELECTOR_REQUIRED: GPT-5.6 Sol
+MODE_REQUIRED: Pro
+EFFECTIVE_MODEL: GPT-5.6 Sol Pro
+MODEL_VERIFIED: true
+
+GOAL:
+<user goal>
+
+INSTRUCTION:
+Inspect the connected workspace through C2C. Return a finite implementation
+plan for Cursor. Do not modify files and do not ask for pasted code.
+```
+
+Wait for the same task ID and one of `STATE: PLAN`, `STATE: BLOCKED`, or
+`STATE: ERROR`. A valid PLAN must contain enough per-file or per-area guidance,
+risks, tests, and success criteria for Cursor to execute. Reject a bare one-line
+answer, but do not request an oversized speculative design.
+
+## Local execution
+
+Cursor executes the accepted plan using its normal file and terminal tools.
+ChatGPT Web must not edit the workspace or run local commands through C2C.
+
+Run the tests actually relevant to the change. Preserve the exact result. Do
+not claim a test passed merely because installation or compilation succeeded.
+
+## Independent review turn
+
+After one implementation iteration, send metadata only:
+
+```text
+[C2C]
+STATE: EXECUTED
+TASK_ID: <same id>
+ITERATION: <n>
+MODEL_SELECTOR_REQUIRED: GPT-5.6 Sol
+MODE_REQUIRED: Pro
+EFFECTIVE_MODEL: GPT-5.6 Sol Pro
+MODEL_VERIFIED: true
+
+RESULT:
+Execution finished.
+
+CHANGED_FILES:
+<count>
+
+TESTS:
+<concise actual result>
+
+INSTRUCTION:
+Independently inspect the current git diff, relevant files, and released test
+evidence through C2C. Do not trust this summary as proof. Return PLAN for
+required fixes, DONE when the success criteria are met, or BLOCKED with a
+concrete reason.
+```
+
+If ChatGPT returns PLAN, apply only the bounded required fixes, rerun relevant
+tests, and send another EXECUTED turn in the same browser conversation. Continue
+until DONE or a genuine blocker.
+
+Use one cheap browser snapshot or bounded wait every 20–30 seconds while a reply
+is still generating. A timeout is not permission to resend, open another tab,
+or start another conversation.
+
+## Completion report
+
+Report these independently:
+
+- local bridge/tunnel readiness;
+- connector authorization evidence (`tokenCount`);
+- workspace identity returned by `workspace_info`;
+- visible model and mode verification;
+- ChatGPT planning result;
+- files changed by Cursor;
+- tests actually run and their results;
+- final independent ChatGPT review state.
+
+Never claim that Cursor itself ran GPT-5.6 Sol Pro. Cursor controlled the browser
+and executed the code; ChatGPT Web performed the Sol Pro planning/review turn.
