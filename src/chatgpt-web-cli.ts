@@ -24,9 +24,19 @@ const REQUIRED_MODE_LABEL = "Pro";
 
 const CONTROLLER_SUPPORT = {
   chatgptDesktopCodex: true,
+  cursorIdeOrCliWithProjectPlaywrightMcp: true,
   standaloneCodexCli: false,
-  cursor: false,
+  devspaceCursorAcpSubagent: false,
   grok: false,
+} as const;
+
+const CURSOR_INTEGRATION = {
+  supported: true,
+  browserMcpServer: "devspace-chatgpt-web-browser",
+  mcpConfig: ".cursor/mcp.json",
+  rule: ".cursor/rules/devspace-chatgpt-web.mdc",
+  command: "/chatgpt-web",
+  requiresReloadAfterInstall: true,
 } as const;
 
 function main(argv: string[]): void {
@@ -125,7 +135,11 @@ function parseOptions(args: string[], command: ChatGptWebCommand): ParsedOptions
 function modelGateOutput(): Record<string, unknown> {
   return {
     verified: false,
-    mechanism: "chatgpt-desktop-in-app-browser",
+    mechanism: "visible-browser-controller",
+    supportedControllers: [
+      "chatgpt-desktop-in-app-browser",
+      "cursor-playwright-mcp",
+    ],
     downgradeAllowed: false,
     requiredModelSelectorLabel: REQUIRED_MODEL_SELECTOR_LABEL,
     requiredModeLabel: REQUIRED_MODE_LABEL,
@@ -135,15 +149,22 @@ function modelGateOutput(): Record<string, unknown> {
   };
 }
 
+function commonOutput(): Record<string, unknown> {
+  return {
+    requiredModelSelectorLabel: REQUIRED_MODEL_SELECTOR_LABEL,
+    requiredModeLabel: REQUIRED_MODE_LABEL,
+    effectiveModelLabel: CHATGPT_WEB_REQUIRED_MODEL_LABEL,
+    modelVerification: modelGateOutput(),
+    controllerSupport: CONTROLLER_SUPPORT,
+    cursorIntegration: CURSOR_INTEGRATION,
+  };
+}
+
 function presentDoctor(report: ChatGptWebDoctorReport, json: boolean): void {
   if (json) {
     printJson({
       ...report,
-      requiredModelSelectorLabel: REQUIRED_MODEL_SELECTOR_LABEL,
-      requiredModeLabel: REQUIRED_MODE_LABEL,
-      effectiveModelLabel: CHATGPT_WEB_REQUIRED_MODEL_LABEL,
-      modelVerification: modelGateOutput(),
-      controllerSupport: CONTROLLER_SUPPORT,
+      ...commonOutput(),
     });
     return;
   }
@@ -159,8 +180,9 @@ function presentDoctor(report: ChatGptWebDoctorReport, json: boolean): void {
   console.log(`· Required model selector: ${REQUIRED_MODEL_SELECTOR_LABEL}`);
   console.log(`· Required mode: ${REQUIRED_MODE_LABEL}`);
   console.log(`· Effective model: ${CHATGPT_WEB_REQUIRED_MODEL_LABEL}`);
-  console.log("· Browser controller: ChatGPT desktop-app Codex session");
-  console.log("· Standalone Codex CLI / Cursor / Grok browser control: not supported");
+  console.log("· Browser controllers: ChatGPT desktop Codex, or native Cursor with project Playwright MCP");
+  console.log("· Standalone Codex CLI / DevSpace Cursor ACP subagent / Grok: not yet supported");
+  console.log("· Cursor entry point: /chatgpt-web after enabling devspace-chatgpt-web-browser");
   console.log("· Model verification: confirm both visible controls, or one equivalent combined label");
   console.log("· Automatic downgrade: disabled");
 
@@ -189,11 +211,7 @@ function presentWorkspaceCommand(
       command,
       workspaceRoot,
       requiredModelLabel: CHATGPT_WEB_REQUIRED_MODEL_LABEL,
-      requiredModelSelectorLabel: REQUIRED_MODEL_SELECTOR_LABEL,
-      requiredModeLabel: REQUIRED_MODE_LABEL,
-      effectiveModelLabel: CHATGPT_WEB_REQUIRED_MODEL_LABEL,
-      controllerSupport: CONTROLLER_SUPPORT,
-      modelVerification: modelGateOutput(),
+      ...commonOutput(),
       c2c: resolutionOutput(result.resolution),
       ...(result.parsed === undefined ? {} : { result: result.parsed }),
       ...(invocation
@@ -241,8 +259,8 @@ function printHelp(): void {
   console.log([
     "DevSpace ChatGPT Web planner/reviewer",
     "",
-    "Prepare a C2C bridge for a ChatGPT desktop-app Codex session to use",
-    "ChatGPT Web for planning and review.",
+    "Prepare a C2C bridge for either a ChatGPT desktop-app Codex session or",
+    "a native Cursor IDE/CLI session with the project Playwright MCP server.",
     `Required browser selection: model ${REQUIRED_MODEL_SELECTOR_LABEL} + mode ${REQUIRED_MODE_LABEL}`,
     `Effective model: ${CHATGPT_WEB_REQUIRED_MODEL_LABEL}`,
     "",
@@ -252,15 +270,19 @@ function printHelp(): void {
     "  devspace chatgpt-web status [--json] [-w <workspace>]",
     "  devspace chatgpt-web pair [--json] [-w <workspace>]",
     "",
+    "Cursor:",
+    "  Enable .cursor/mcp.json server devspace-chatgpt-web-browser, reload Cursor,",
+    "  then invoke /chatgpt-web or the devspace-chatgpt-web project rule.",
+    "  Native Cursor IDE and Cursor CLI support project MCP and rules.",
+    "  devspace agents run cursor remains a separate ACP path and does not inherit",
+    "  the project browser MCP in this version.",
+    "",
     "Discovery:",
     "  DEVSPACE_C2C_COMMAND (or C2C_COMMAND) points to a c2c executable.",
     "  DEVSPACE_C2C_CHECKOUT (or C2C_CHECKOUT) points to a codex-with-chatgpt checkout.",
     "  Otherwise DevSpace tries c2c on PATH and ~/codex-with-chatgpt.",
     "",
     "DevSpace server/OAuth initialization is not required for these commands.",
-    "These commands prepare the local bridge only. Browser control requires the",
-    "ChatGPT desktop app's Codex session and its in-app browser.",
-    "Standalone Codex CLI, Cursor, and Grok do not directly own this control plane.",
     "The integration never treats a Codex/API model identifier as proof of Sol Pro and never downgrades.",
   ].join("\n"));
 }
