@@ -19,6 +19,9 @@ interface ParsedOptions {
   workspace?: string;
 }
 
+const REQUIRED_MODEL_SELECTOR_LABEL = "GPT-5.6 Sol";
+const REQUIRED_MODE_LABEL = "Pro";
+
 const CONTROLLER_SUPPORT = {
   chatgptDesktopCodex: true,
   standaloneCodexCli: false,
@@ -119,10 +122,27 @@ function parseOptions(args: string[], command: ChatGptWebCommand): ParsedOptions
   return parsed;
 }
 
+function modelGateOutput(): Record<string, unknown> {
+  return {
+    verified: false,
+    mechanism: "chatgpt-desktop-in-app-browser",
+    downgradeAllowed: false,
+    requiredModelSelectorLabel: REQUIRED_MODEL_SELECTOR_LABEL,
+    requiredModeLabel: REQUIRED_MODE_LABEL,
+    effectiveModelLabel: CHATGPT_WEB_REQUIRED_MODEL_LABEL,
+    detail:
+      `Confirm model ${JSON.stringify(REQUIRED_MODEL_SELECTOR_LABEL)} and mode ${JSON.stringify(REQUIRED_MODE_LABEL)} as two visible controls. A single combined ${JSON.stringify(CHATGPT_WEB_REQUIRED_MODEL_LABEL)} label is also acceptable when the UI renders one.`,
+  };
+}
+
 function presentDoctor(report: ChatGptWebDoctorReport, json: boolean): void {
   if (json) {
     printJson({
       ...report,
+      requiredModelSelectorLabel: REQUIRED_MODEL_SELECTOR_LABEL,
+      requiredModeLabel: REQUIRED_MODE_LABEL,
+      effectiveModelLabel: CHATGPT_WEB_REQUIRED_MODEL_LABEL,
+      modelVerification: modelGateOutput(),
       controllerSupport: CONTROLLER_SUPPORT,
     });
     return;
@@ -136,10 +156,12 @@ function presentDoctor(report: ChatGptWebDoctorReport, json: boolean): void {
   console.log(`${report.localReady ? "✓" : "✗"} Local planner/reviewer bridge: ${
     report.localReady ? "ready" : "not ready"
   }`);
-  console.log(`· Required ChatGPT Web model: ${report.requiredModelLabel}`);
+  console.log(`· Required model selector: ${REQUIRED_MODEL_SELECTOR_LABEL}`);
+  console.log(`· Required mode: ${REQUIRED_MODE_LABEL}`);
+  console.log(`· Effective model: ${CHATGPT_WEB_REQUIRED_MODEL_LABEL}`);
   console.log("· Browser controller: ChatGPT desktop-app Codex session");
   console.log("· Standalone Codex CLI / Cursor / Grok browser control: not supported");
-  console.log("· Model verification: exact visible label must be confirmed in the desktop in-app browser");
+  console.log("· Model verification: confirm both visible controls, or one equivalent combined label");
   console.log("· Automatic downgrade: disabled");
 
   if (report.error) {
@@ -167,12 +189,11 @@ function presentWorkspaceCommand(
       command,
       workspaceRoot,
       requiredModelLabel: CHATGPT_WEB_REQUIRED_MODEL_LABEL,
+      requiredModelSelectorLabel: REQUIRED_MODEL_SELECTOR_LABEL,
+      requiredModeLabel: REQUIRED_MODE_LABEL,
+      effectiveModelLabel: CHATGPT_WEB_REQUIRED_MODEL_LABEL,
       controllerSupport: CONTROLLER_SUPPORT,
-      modelVerification: {
-        verified: false,
-        mechanism: "chatgpt-desktop-in-app-browser",
-        downgradeAllowed: false,
-      },
+      modelVerification: modelGateOutput(),
       c2c: resolutionOutput(result.resolution),
       ...(result.parsed === undefined ? {} : { result: result.parsed }),
       ...(invocation
@@ -222,7 +243,8 @@ function printHelp(): void {
     "",
     "Prepare a C2C bridge for a ChatGPT desktop-app Codex session to use",
     "ChatGPT Web for planning and review.",
-    `The required model label is exactly: ${CHATGPT_WEB_REQUIRED_MODEL_LABEL}`,
+    `Required browser selection: model ${REQUIRED_MODEL_SELECTOR_LABEL} + mode ${REQUIRED_MODE_LABEL}`,
+    `Effective model: ${CHATGPT_WEB_REQUIRED_MODEL_LABEL}`,
     "",
     "Usage:",
     "  devspace chatgpt-web doctor [--fix] [--json] [-w <workspace>]",
