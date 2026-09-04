@@ -40,15 +40,19 @@ long-lived tokens into the conversation.
 
 ## Hard requirements
 
-1. The visible ChatGPT Web model selector must display and select the exact label
-   **`GPT-5.6 Sol Pro`**.
-2. Re-read the selector after selection. A prompt asking for Sol Pro is not proof
-   that the correct model is active.
-3. Never silently use Sol, Terra, Luna, Auto, or another fallback. If the exact
-   label is unavailable, stop with `MODEL_UNAVAILABLE`.
-4. Never pass `gpt-5.6-sol-pro` or a similar invented identifier to Codex, an API,
-   or `devspace agents`. Sol Pro is verified only as a visible ChatGPT Web label.
-5. Do not describe a successful local doctor result as browser or model
+1. The visible model-family control must show **`GPT-5.6 Sol`**.
+2. The visible capability/reasoning control must show **`Pro`**.
+3. Treat those two controls together as the effective model
+   **`GPT-5.6 Sol Pro`**. Some UI versions may instead show one combined summary
+   label; a normalized combined label of `GPT-5.6 Sol Pro` is equivalent.
+4. Re-read the controls after selection. A prompt asking for Sol Pro is not
+   proof that the correct model and mode are active.
+5. Never silently use Medium, High, Extra High, Auto, Terra, Luna, or another
+   fallback. `GPT-5.6 Sol` with `High` or `Extra High` is not Sol Pro. If either
+   required control cannot be verified, stop with `MODEL_UNAVAILABLE`.
+6. Never pass `gpt-5.6-sol-pro` or a similar invented identifier to Codex, an API,
+   or `devspace agents`. Sol Pro is a ChatGPT Web model-plus-mode selection.
+7. Do not describe a successful local doctor result as browser or model
    verification. The bridge gate and web-model gate are separate.
 
 ## Local readiness
@@ -74,6 +78,10 @@ Interpret the result precisely:
 
 - `localReady: true`: local bridge and MCP checks are healthy.
 - `modelVerification.verified: false`: expected before browser inspection.
+- `requiredModelSelectorLabel`: must be `GPT-5.6 Sol`.
+- `requiredModeLabel`: must be `Pro`.
+- `effectiveModelLabel` or legacy `requiredModelLabel`: describes the combined
+  effective model `GPT-5.6 Sol Pro`; it is not necessarily one DOM label.
 - C2C status `tokenCount: 0`: ChatGPT has not completed connector OAuth.
 - C2C status `pairingActive: true`: a pairing code is waiting or still valid.
 
@@ -108,8 +116,8 @@ devspace chatgpt-web pair --json
 
 When the separate `codex-with-chatgpt` skill is installed, read it and follow
 its current connector, pairing, tunnel, Project, conversation-reuse, and recovery
-rules. This skill adds the DevSpace command surface and exact-model gate; it does
-not replace the C2C protocol.
+rules. This skill adds the DevSpace command surface and Sol-plus-Pro gate; it
+does not replace the C2C protocol.
 
 ## Complete first-time connector setup
 
@@ -123,7 +131,7 @@ bridge is ready. Complete the remaining work in the ChatGPT desktop app:
 5. Complete OAuth and enter a fresh one-time pairing code.
 6. Verify `workspace_info` names the expected workspace.
 7. Confirm `devspace chatgpt-web status --json` reports a nonzero `tokenCount`.
-8. Select and re-check the exact visible label `GPT-5.6 Sol Pro`.
+8. Select model `GPT-5.6 Sol`, select mode `Pro`, and re-check both controls.
 
 If the pairing code expired, generate a new one immediately before the OAuth
 flow:
@@ -140,16 +148,18 @@ Before sending a task message:
 
 1. Reuse one ChatGPT in-app-browser tab for this workspace and task.
 2. Open or claim the saved C2C conversation or workspace ChatGPT Project.
-3. Inspect the visible model selector.
-4. Select **`GPT-5.6 Sol Pro`**.
-5. Re-read the selector and require normalized visible text to equal exactly
-   `GPT-5.6 Sol Pro`.
-6. Record only the boolean verification and label in turn state. Never persist
-   cookies, tokens, or page storage.
+3. Inspect the visible model-family control and select **`GPT-5.6 Sol`**.
+4. Inspect the visible capability/reasoning control and select **`Pro`**.
+5. Re-read both controls and require normalized visible text to equal
+   `GPT-5.6 Sol` and `Pro` respectively.
+6. If the current UI renders only one combined summary, accept it only when its
+   normalized visible text is exactly `GPT-5.6 Sol Pro`.
+7. Record only the boolean verification plus the model and mode labels in turn
+   state. Never persist cookies, tokens, or page storage.
 
-If the selector is absent because the account or product surface cannot choose
-models, do not infer the active model from an older conversation. Stop with
-`MODEL_UNAVAILABLE`.
+If either control is absent because the account or product surface cannot choose
+it, do not infer the active mode from the account plan or an older conversation.
+Stop with `MODEL_UNAVAILABLE`.
 
 ## Planning workflow
 
@@ -161,7 +171,9 @@ model gate all succeed, send:
 STATE: INIT
 TASK_ID: <stable task id>
 ITERATION: 0
-MODEL_REQUIRED: GPT-5.6 Sol Pro
+MODEL_SELECTOR_REQUIRED: GPT-5.6 Sol
+MODE_REQUIRED: Pro
+EFFECTIVE_MODEL: GPT-5.6 Sol Pro
 MODEL_VERIFIED: true
 
 GOAL:
@@ -189,7 +201,9 @@ metadata only:
 STATE: EXECUTED
 TASK_ID: <same task id>
 ITERATION: <n>
-MODEL_REQUIRED: GPT-5.6 Sol Pro
+MODEL_SELECTOR_REQUIRED: GPT-5.6 Sol
+MODE_REQUIRED: Pro
+EFFECTIVE_MODEL: GPT-5.6 Sol Pro
 MODEL_VERIFIED: true
 
 RESULT:
@@ -235,7 +249,8 @@ which work.
 - Run non-mutating doctor first after restart.
 - Use `--fix` only after inspecting the JSON repair fields.
 - If a temporary public address changed, follow C2C's connector repair flow.
-- If the exact model label disappears, stop before the next control message.
+- If model `GPT-5.6 Sol` or mode `Pro` disappears, stop before the next control
+  message.
 - Never claim terminal-only, Cursor-direct, or Grok-direct ChatGPT Web control.
 
 ## Completion report
@@ -244,11 +259,14 @@ Report separately:
 
 - local bridge readiness;
 - connector authorization (`tokenCount` evidence);
-- exact model-label verification;
+- model-family verification (`GPT-5.6 Sol`);
+- mode verification (`Pro`);
+- effective model (`GPT-5.6 Sol Pro`);
 - planning result;
 - executor/provider used for file changes;
 - tests actually run and results;
 - final independent review state.
 
-Do not claim browser E2E verification unless the exact selector was inspected in
-the current ChatGPT desktop-app browser session.
+Do not claim browser E2E verification unless both controls, or an equivalent
+combined label, were inspected in the current ChatGPT desktop-app browser
+session.
